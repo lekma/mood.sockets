@@ -580,7 +580,7 @@ __Socket_new(PyTypeObject *type, int fd, struct sockaddr *addr)
 
 /* Socket_Type -------------------------------------------------------------- */
 
-/* [Client, Server]_Type.tp_new */
+/* [ClientSocket, ServerSocket]_Type.tp_new */
 static PyObject *
 Socket_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
@@ -647,9 +647,6 @@ Socket_tp_repr(Socket *self)
 
 
 /* Socket.close() */
-PyDoc_STRVAR(Socket_close_doc,
-"close()");
-
 static PyObject *
 Socket_close(Socket *self)
 {
@@ -661,9 +658,6 @@ Socket_close(Socket *self)
 
 
 /* Socket.fileno() */
-PyDoc_STRVAR(Socket_fileno_doc,
-"fileno() -> int");
-
 static PyObject *
 Socket_fileno(Socket *self)
 {
@@ -673,8 +667,8 @@ Socket_fileno(Socket *self)
 
 /* Socket_Type.tp_methods */
 static PyMethodDef Socket_tp_methods[] = {
-    {"close", (PyCFunction)Socket_close, METH_NOARGS, Socket_close_doc},
-    {"fileno", (PyCFunction)Socket_fileno, METH_NOARGS, Socket_fileno_doc},
+    {"close", (PyCFunction)Socket_close, METH_NOARGS, "close()"},
+    {"fileno", (PyCFunction)Socket_fileno, METH_NOARGS, "fileno() -> int"},
     {NULL}  /* Sentinel */
 };
 
@@ -718,7 +712,7 @@ PyTypeObject Socket_Type = {
 
 
 /* --------------------------------------------------------------------------
-    Client
+    ClientSocket
    -------------------------------------------------------------------------- */
 
 static inline Py_ssize_t
@@ -759,14 +753,11 @@ __buf_resize(PyByteArrayObject *buf, size_t size)
 }
 
 
-/* Client_Type -------------------------------------------------------------- */
+/* ClientSocket_Type -------------------------------------------------------- */
 
-/* Client.write(buf) */
-PyDoc_STRVAR(Client_write_doc,
-"write(buf)");
-
+/* ClientSocket.write(buf) */
 static PyObject *
-Client_write(Socket *self, PyObject *args)
+ClientSocket_write(Socket *self, PyObject *args)
 {
     PyByteArrayObject *buf = NULL;
     Py_ssize_t len = 0, size = -1;
@@ -788,12 +779,9 @@ Client_write(Socket *self, PyObject *args)
 }
 
 
-/* Client.read(buf) */
-PyDoc_STRVAR(Client_read_doc,
-"read(buf) -> bool");
-
+/* ClientSocket.read(buf) */
 static PyObject *
-Client_read(Socket *self, PyObject *args)
+ClientSocket_read(Socket *self, PyObject *args)
 {
     PyByteArrayObject *buf = NULL;
     Py_ssize_t len = 0, size = -1;
@@ -823,43 +811,40 @@ Client_read(Socket *self, PyObject *args)
 }
 
 
-/* Client_Type.tp_methods */
-static PyMethodDef Client_tp_methods[] = {
-    {"write", (PyCFunction)Client_write, METH_VARARGS, Client_write_doc},
-    {"read", (PyCFunction)Client_read, METH_VARARGS, Client_read_doc},
+/* ClientSocket_Type.tp_methods */
+static PyMethodDef ClientSocket_tp_methods[] = {
+    {"write", (PyCFunction)ClientSocket_write, METH_VARARGS, "write(buf)"},
+    {"read", (PyCFunction)ClientSocket_read, METH_VARARGS, "read(buf) -> bool"},
     {NULL}  /* Sentinel */
 };
 
 
-/* Client_Type.tp_init */
+/* ClientSocket_Type.tp_init */
 static int
-Client_tp_init(Socket *self, PyObject *args, PyObject *kwargs)
+ClientSocket_tp_init(Socket *self, PyObject *args, PyObject *kwargs)
 {
     return __Socket_init(self, args, 0);
 }
 
 
-static PyTypeObject Client_Type = {
+static PyTypeObject ClientSocket_Type = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "mood.sockets.Client",
+    .tp_name = "mood.sockets.ClientSocket",
     .tp_basicsize = sizeof(Socket),
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-    .tp_methods = Client_tp_methods,
-    .tp_init = (initproc)Client_tp_init,
+    .tp_methods = ClientSocket_tp_methods,
+    .tp_init = (initproc)ClientSocket_tp_init,
     .tp_new = Socket_tp_new,
 };
 
 
 /* --------------------------------------------------------------------------
-    Server
+    ServerSocket
    -------------------------------------------------------------------------- */
 
-/* Server.accept() */
-PyDoc_STRVAR(Server_accept_doc,
-"accept() -> Socket");
-
+/* ServerSocket.accept() */
 static PyObject *
-Server_accept(Socket *self)
+ServerSocket_accept(Socket *self)
 {
     struct sockaddr_storage saddr = {0};
     struct sockaddr *addr = (struct sockaddr *)&saddr;
@@ -869,32 +854,32 @@ Server_accept(Socket *self)
     if ((fd = __accept(self->fd, addr, &addrlen)) == -1) {
         return NULL;
     }
-    return (PyObject *)__Socket_new(&Client_Type, fd, addr);
+    return (PyObject *)__Socket_new(&ClientSocket_Type, fd, addr);
 }
 
 
-/* Server_Type.tp_methods */
-static PyMethodDef Server_tp_methods[] = {
-    {"accept", (PyCFunction)Server_accept, METH_NOARGS, Server_accept_doc},
+/* ServerSocket_Type.tp_methods */
+static PyMethodDef ServerSocket_tp_methods[] = {
+    {"accept", (PyCFunction)ServerSocket_accept,  METH_NOARGS, "accept() -> sock"},
     {NULL}  /* Sentinel */
 };
 
 
-/* Server_Type.tp_init */
+/* ServerSocket_Type.tp_init */
 static int
-Server_tp_init(Socket *self, PyObject *args, PyObject *kwargs)
+ServerSocket_tp_init(Socket *self, PyObject *args, PyObject *kwargs)
 {
     return __Socket_init(self, args, 1);
 }
 
 
-static PyTypeObject Server_Type = {
+static PyTypeObject ServerSocket_Type = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "mood.sockets.Server",
+    .tp_name = "mood.sockets.ServerSocket",
     .tp_basicsize = sizeof(Socket),
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-    .tp_methods = Server_tp_methods,
-    .tp_init = (initproc)Server_tp_init,
+    .tp_methods = ServerSocket_tp_methods,
+    .tp_init = (initproc)ServerSocket_tp_init,
     .tp_new = Socket_tp_new,
 };
 
@@ -918,8 +903,12 @@ _module_init(PyObject *module)
     if (
         PyModule_AddStringConstant(module, "__version__", PKG_VERSION) ||
         PyType_Ready(&Socket_Type) ||
-        _PyModule_AddTypeWithBase(module, "Client", &Client_Type, &Socket_Type) ||
-        _PyModule_AddTypeWithBase(module, "Server", &Server_Type, &Socket_Type)
+        _PyModule_AddTypeWithBase(
+            module, "ClientSocket", &ClientSocket_Type, &Socket_Type
+        ) ||
+        _PyModule_AddTypeWithBase(
+            module, "ServerSocket", &ServerSocket_Type, &Socket_Type
+        )
     ) {
         return -1;
     }
