@@ -866,17 +866,9 @@ static PyTypeObject ServerSocket_Type = {
     module
    -------------------------------------------------------------------------- */
 
-/* sockets_def */
-static PyModuleDef sockets_def = {
-    PyModuleDef_HEAD_INIT,
-    .m_name = "sockets",
-    .m_doc = "mood sockets module",
-    .m_size = 0,
-};
-
-
-static inline int
-_module_init(PyObject *module)
+/* sockets_def.m_slots.Py_mod_exec */
+static int
+sockets_m_slots_exec(PyObject *module)
 {
     if (
         PyModule_AddStringConstant(module, "__version__", PKG_VERSION) ||
@@ -894,17 +886,26 @@ _module_init(PyObject *module)
 }
 
 
+/* sockets_def.m_slots */
+static struct PyModuleDef_Slot sockets_m_slots[] = {
+    {Py_mod_exec, sockets_m_slots_exec},
+    {0, NULL}
+};
+
+
+/* sockets_def */
+static PyModuleDef sockets_def = {
+    PyModuleDef_HEAD_INIT,
+    .m_name = "sockets",
+    .m_doc = "mood sockets module",
+    .m_size = 0,
+    .m_slots = sockets_m_slots,
+};
+
+
 /* module initialization */
 PyMODINIT_FUNC
 PyInit_sockets(void)
 {
-    PyObject *module = NULL;
-
-    if ((module = PyState_FindModule(&sockets_def))) {
-        Py_INCREF(module);
-    }
-    else if ((module = PyModule_Create(&sockets_def)) && _module_init(module)) {
-        Py_CLEAR(module);
-    }
-    return module;
+    return PyModuleDef_Init(&sockets_def);
 }
