@@ -27,6 +27,24 @@
 
 /* -------------------------------------------------------------------------- */
 
+/* Socket */
+typedef struct {
+    PyObject_HEAD
+    int fd;
+    Py_ssize_t wsize;
+    PyObject *address;
+} Socket;
+
+
+/* module state */
+typedef struct {
+    PyObject *socket_type;
+    PyObject *client_type;
+} module_state;
+
+
+/* -------------------------------------------------------------------------- */
+
 #define debug(fmt, ...) printf("[%s:%d] " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
 
 #define __sys_wrap(t, fn, ...) \
@@ -470,15 +488,6 @@ exit:
     Socket
    -------------------------------------------------------------------------- */
 
-/* Socket */
-typedef struct {
-    PyObject_HEAD
-    int fd;
-    Py_ssize_t wsize;
-    PyObject *address;
-} Socket;
-
-
 static Socket *
 __Socket_alloc(PyTypeObject *type)
 {
@@ -566,6 +575,16 @@ Socket_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 }
 
 
+/* Socket_Type.tp_traverse */
+static int
+Socket_tp_traverse(Socket *self, visitproc visit, void *arg)
+{
+    Py_VISIT(self->address);
+    Py_VISIT(Py_TYPE(self)); // heap type
+    return 0;
+}
+
+
 /* Socket_Type.tp_finalize */
 static void
 Socket_tp_finalize(Socket *self)
@@ -577,15 +596,6 @@ Socket_tp_finalize(Socket *self)
         PyErr_WriteUnraisable((PyObject *)self);
     }
     PyErr_Restore(exc_type, exc_value, exc_traceback);
-}
-
-
-/* Socket_Type.tp_traverse */
-static int
-Socket_tp_traverse(Socket *self, visitproc visit, void *arg)
-{
-    Py_VISIT(self->address);
-    return 0;
 }
 
 
@@ -607,6 +617,7 @@ Socket_tp_dealloc(Socket *self)
     }
     PyObject_GC_UnTrack(self);
     Socket_tp_clear(self);
+    Py_XDECREF(Py_TYPE(self)); // heap type
     PyObject_GC_Del(self);
 }
 
@@ -673,19 +684,24 @@ static PyGetSetDef Socket_tp_getset[] = {
 };
 
 
-PyTypeObject Socket_Type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "mood.sockets.Socket",
-    .tp_basicsize = sizeof(Socket),
-    .tp_dealloc = (destructor)Socket_tp_dealloc,
-    .tp_repr = (reprfunc)Socket_tp_repr,
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_HAVE_FINALIZE,
-    .tp_traverse = (traverseproc)Socket_tp_traverse,
-    .tp_clear = (inquiry)Socket_tp_clear,
-    .tp_methods = Socket_tp_methods,
-    .tp_members = Socket_tp_members,
-    .tp_getset = Socket_tp_getset,
-    .tp_finalize = (destructor)Socket_tp_finalize,
+static PyType_Slot socket_type_slots[] = {
+    {Py_tp_traverse, Socket_tp_traverse},
+    {Py_tp_finalize, Socket_tp_finalize},
+    {Py_tp_clear, Socket_tp_clear},
+    {Py_tp_dealloc, Socket_tp_dealloc},
+    {Py_tp_repr, Socket_tp_repr},
+    {Py_tp_methods, Socket_tp_methods},
+    {Py_tp_members, Socket_tp_members},
+    {Py_tp_getset, Socket_tp_getset},
+    {0, NULL}
+};
+
+
+static PyType_Spec socket_type_spec = {
+    .name = "mood.sockets.Socket",
+    .basicsize = sizeof(Socket),
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_HAVE_FINALIZE,
+    .slots = socket_type_slots
 };
 
 
@@ -805,14 +821,19 @@ ClientSocket_tp_init(Socket *self, PyObject *args, PyObject *kwargs)
 }
 
 
-static PyTypeObject ClientSocket_Type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "mood.sockets.ClientSocket",
-    .tp_basicsize = sizeof(Socket),
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-    .tp_methods = ClientSocket_tp_methods,
-    .tp_init = (initproc)ClientSocket_tp_init,
-    .tp_new = Socket_tp_new,
+static PyType_Slot client_type_slots[] = {
+    {Py_tp_new, Socket_tp_new},
+    {Py_tp_init, ClientSocket_tp_init},
+    {Py_tp_methods, ClientSocket_tp_methods},
+    {0, NULL}
+};
+
+
+static PyType_Spec client_type_spec = {
+    .name = "mood.sockets.ClientSocket",
+    .basicsize = sizeof(Socket),
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .slots = client_type_slots
 };
 
 
@@ -824,15 +845,19 @@ static PyTypeObject ClientSocket_Type = {
 static PyObject *
 ServerSocket_accept(Socket *self)
 {
+    module_state *state = NULL;
     struct sockaddr_storage saddr = {0};
     struct sockaddr *addr = (struct sockaddr *)&saddr;
     socklen_t addrlen = sizeof(struct sockaddr_storage); // static const?
     int fd = -1;
 
-    if ((fd = __accept(self->fd, addr, &addrlen)) == -1) {
+    if (
+        !(state = __PyObject_GetState__((PyObject *)self)) ||
+        ((fd = __accept(self->fd, addr, &addrlen)) == -1)
+    ) {
         return NULL;
     }
-    return (PyObject *)__Socket_new(&ClientSocket_Type, fd, addr);
+    return (PyObject *)__Socket_new((PyTypeObject *)state->client_type, fd, addr);
 }
 
 
@@ -851,14 +876,19 @@ ServerSocket_tp_init(Socket *self, PyObject *args, PyObject *kwargs)
 }
 
 
-static PyTypeObject ServerSocket_Type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "mood.sockets.ServerSocket",
-    .tp_basicsize = sizeof(Socket),
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-    .tp_methods = ServerSocket_tp_methods,
-    .tp_init = (initproc)ServerSocket_tp_init,
-    .tp_new = Socket_tp_new,
+static PyType_Slot server_type_slots[] = {
+    {Py_tp_new, Socket_tp_new},
+    {Py_tp_init, ServerSocket_tp_init},
+    {Py_tp_methods, ServerSocket_tp_methods},
+    {0, NULL}
+};
+
+
+static PyType_Spec server_type_spec = {
+    .name = "mood.sockets.ServerSocket",
+    .basicsize = sizeof(Socket),
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .slots = server_type_slots
 };
 
 
@@ -870,15 +900,31 @@ static PyTypeObject ServerSocket_Type = {
 static int
 sockets_m_slots_exec(PyObject *module)
 {
+    module_state *state = NULL;
+    PyObject *server_type = NULL;
+
     if (
-        PyModule_AddStringConstant(module, "__version__", PKG_VERSION) ||
-        PyType_Ready(&Socket_Type) ||
-        _PyModule_AddTypeWithBase(
-            module, "ClientSocket", &ClientSocket_Type, &Socket_Type
+        !(state = __PyModule_GetState__(module)) ||
+        !(
+            state->socket_type = PyType_FromModuleAndSpec(
+                module, &socket_type_spec, NULL
+            )
         ) ||
-        _PyModule_AddTypeWithBase(
-            module, "ServerSocket", &ServerSocket_Type, &Socket_Type
-        )
+        !(
+            state->client_type = Py_NewRef(
+                PyType_FromModuleAndSpec(
+                    module, &client_type_spec, state->socket_type
+                )
+            )
+        ) ||
+        PyModule_AddObject(module, "ClientSocket", state->client_type) || // steals ref
+        !(
+            server_type = PyType_FromModuleAndSpec(
+                module, &server_type_spec, state->socket_type
+            )
+        ) ||
+        PyModule_AddObject(module, "ServerSocket", server_type) || // steals ref
+        PyModule_AddStringConstant(module, "__version__", PKG_VERSION)
     ) {
         return -1;
     }
@@ -893,13 +939,58 @@ static struct PyModuleDef_Slot sockets_m_slots[] = {
 };
 
 
+/* sockets_def.m_traverse */
+static int
+sockets_m_traverse(PyObject *module, visitproc visit, void *arg)
+{
+    //printf("sockets_m_traverse\n");
+
+    module_state *state = NULL;
+
+    if (!(state = __PyModule_GetState__(module))) {
+        return -1;
+    }
+    Py_VISIT(state->client_type);
+    Py_VISIT(state->socket_type);
+    return 0;
+}
+
+
+/* sockets_def.m_clear */
+static int
+sockets_m_clear(PyObject *module)
+{
+    //printf("sockets_m_clear\n");
+
+    module_state *state = NULL;
+
+    if (!(state = __PyModule_GetState__(module))) {
+        return -1;
+    }
+    Py_CLEAR(state->client_type);
+    Py_CLEAR(state->socket_type);
+    return 0;
+}
+
+
+/* sockets_def.m_free */
+static void
+sockets_m_free(PyObject *module)
+{
+    sockets_m_clear(module);
+}
+
+
 /* sockets_def */
 static PyModuleDef sockets_def = {
     PyModuleDef_HEAD_INIT,
     .m_name = "sockets",
     .m_doc = "mood sockets module",
-    .m_size = 0,
+    .m_size = sizeof(module_state),
     .m_slots = sockets_m_slots,
+    .m_traverse = (traverseproc)sockets_m_traverse,
+    .m_clear = (inquiry)sockets_m_clear,
+    .m_free = (freefunc)sockets_m_free,
 };
 
 
