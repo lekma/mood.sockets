@@ -901,7 +901,6 @@ static int
 sockets_m_slots_exec(PyObject *module)
 {
     module_state *state = NULL;
-    PyObject *server_type = NULL;
 
     if (
         !(state = __PyModule_GetState__(module)) ||
@@ -910,18 +909,12 @@ sockets_m_slots_exec(PyObject *module)
                 module, &socket_type_spec, NULL
             )
         ) ||
-        !(
-            state->client_type = PyType_FromModuleAndSpec(
-                module, &client_type_spec, state->socket_type
-            )
+        _PyModule_AddTypeFromSpec(
+            module, &client_type_spec, state->socket_type, &state->client_type
         ) ||
-        PyModule_AddType(module, (PyTypeObject*)state->client_type) ||
-        !(
-            server_type = PyType_FromModuleAndSpec(
-                module, &server_type_spec, state->socket_type
-            )
+        _PyModule_AddTypeFromSpec(
+            module, &server_type_spec, state->socket_type, NULL
         ) ||
-        PyModule_AddObject(module, "ServerSocket", server_type) || // steals ref
         PyModule_AddStringConstant(module, "__version__", PKG_VERSION)
     ) {
         return -1;
