@@ -911,13 +911,11 @@ sockets_m_slots_exec(PyObject *module)
             )
         ) ||
         !(
-            state->client_type = Py_NewRef(
-                PyType_FromModuleAndSpec(
-                    module, &client_type_spec, state->socket_type
-                )
+            state->client_type = PyType_FromModuleAndSpec(
+                module, &client_type_spec, state->socket_type
             )
         ) ||
-        PyModule_AddObject(module, "ClientSocket", state->client_type) || // steals ref
+        PyModule_AddType(module, (PyTypeObject*)state->client_type) ||
         !(
             server_type = PyType_FromModuleAndSpec(
                 module, &server_type_spec, state->socket_type
