@@ -617,8 +617,9 @@ Socket_tp_dealloc(Socket *self)
     }
     PyObject_GC_UnTrack(self);
     Socket_tp_clear(self);
-    Py_XDECREF(Py_TYPE(self)); // heap type
+    PyTypeObject *type = Py_TYPE(self);
     PyObject_GC_Del(self);
+    Py_XDECREF(type); // heap type
 }
 
 
